@@ -1,7 +1,7 @@
 [project]
 name = "mcp-generator"
 dynamic = ["version"]
-description = "OpenAPI to FastAPI MCP Server Generator"
+description = "Generate FastMCP servers from OpenAPI and Swagger specifications"
 authors = [
     {name = "Maximilian Nussbaumer", email = "max.nussbaumer@maxhealth.tech"}
 ]

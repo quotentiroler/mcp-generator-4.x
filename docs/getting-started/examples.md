@@ -1,65 +1,56 @@
 # Examples
 
-## Swagger Petstore
+The [`examples/`](https://github.com/quotentiroler/mcp-generator-4.x/tree/main/examples)
+directory holds input specs only. CI regenerates a server from each one and runs its test suite
+(`.github/workflows/test-examples.yml`).
 
-The classic test API — 19 endpoints across 3 tags.
+| Directory | Spec version | Paths | Notes |
+|---|---|---|---|
+| `minimal` | OpenAPI 3.0.0 | 2 | Smallest working input |
+| `petstore-openapi-3-0-4` | OpenAPI 3.0.4 | 13 | Swagger Petstore with OAuth2 (implicit flow) and API key |
+| `petstore-openapi-3-1-0` | OpenAPI 3.1.0 | 2 | OpenAPI 3.1 input |
+| `petstore-swagger-2-0` | Swagger 2.0 | 14 | Swagger 2.0 input |
+| `proxy-smart` | OpenAPI 3.0.3 | 139 | Proxy Smart backend API, a larger spec |
+
+## Generate and test an example
 
 ```bash
-generate-mcp --url https://petstore3.swagger.io/api/v3/openapi.json
-
-cd generated_mcp
-python swagger_petstore_openapi_mcp_generated.py --transport http --port 8000
+cd examples/petstore-openapi-3-0-4
+generate-mcp --enable-storage --enable-caching --enable-resources
+python test/run_tests.py
 ```
 
-**Generated structure:**
+`generate-mcp` reads `openapi.json` from the current directory and writes
+`generated_openapi/`, `generated_mcp/` and `test/` next to it. These outputs are ignored by
+git.
 
+To regenerate and test every example from the repository root:
+
+```bash
+uv run python scripts/test_examples.py
+# Only examples whose directory name contains the given text
+uv run python scripts/test_examples.py --example swagger-2-0
 ```
+
+## Output for the Petstore example
+
+```text
 generated_mcp/
-├── swagger_petstore_openapi_mcp_generated.py   # Main composition server
+├── swagger_petstore_openapi_mcp_generated.py   main server, mounts the sub-servers
 ├── servers/
-│   ├── pet.py                                   # Pet operations (8 tools)
-│   ├── store.py                                 # Store operations (4 tools)
-│   └── user.py                                  # User operations (7 tools)
+│   ├── pet_server.py                            8 tools
+│   ├── store_server.py                          4 tools
+│   └── user_server.py                           7 tools
 ├── middleware/
-│   └── authentication.py                        # Auth middleware
-├── fastmcp.json                                 # FastMCP configuration
+│   ├── authentication.py
+│   ├── oauth_provider.py
+│   └── event_store.py
+├── fastmcp.json
 ├── pyproject.toml
+├── README.md
 ├── Dockerfile
 └── docker-compose.yml
 ```
 
-## GitHub API
-
-A large-scale spec — 300+ endpoints.
-
-```bash
-generate-mcp --url https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
-```
-
-This generates 300+ tools organized into modular sub-servers by tag (repos, issues, pulls, actions, etc.).
-
-## Minimal API
-
-A two-endpoint API to understand the basics.
-
-```bash
-cd examples/minimal
-generate-mcp --file openapi.json
-```
-
-See the [examples/](https://github.com/quotentiroler/mcp-generator-4.x/tree/main/examples) directory for pre-generated outputs you can inspect.
-
-## Running the Examples
-
-Each example directory contains:
-
-- `openapi.json` — the source spec
-- `generated_mcp/` — pre-generated output
-- `generated_openapi/` — generated Python API client
-- `test/` — test runner
-
-```bash
-# Run any example's tests
-cd examples/petstore
-uv run python test/run_tests.py
-```
+Tool names carry the sub-server namespace, for example `Pet_add_pet` and
+`Store_place_order`.

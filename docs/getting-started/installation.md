@@ -1,53 +1,53 @@
 # Installation
 
-## Prerequisites
+## Requirements
 
-- **Python 3.11+** — required for modern type hints and features
-- **OpenAPI Specification** — your API's OpenAPI 3.0.x, 3.1.x, or Swagger 2.0 spec (JSON or YAML)
+- Python 3.11 or later
+- An OpenAPI 3.0.x, OpenAPI 3.1.x or Swagger 2.0 specification in JSON or YAML
 
-!!! note "Pure Python"
-    MCP Generator is 100% Python — no Java, Node.js, or other runtimes needed.
+The generator and the API client it produces are pure Python. No Java or Node.js runtime is
+needed.
 
-## Install from PyPI (Recommended)
+## From PyPI
 
 ```bash
 pip install mcp-generator
-
-# Or with uv
+# or
 uv pip install mcp-generator
-
-# Verify installation
-generate-mcp --help
 ```
 
-## Install from Source
+The package installs three commands: `generate-mcp`, `register-mcp` and `run-mcp`.
 
-If you want to contribute or run the latest development version:
+## From source
 
 ```bash
 git clone https://github.com/quotentiroler/mcp-generator-4.x.git
 cd mcp-generator-4.x
+uv sync            # or: pip install -e .
+```
 
-# With uv
-uv sync
+## Check the installation
 
-# Or with pip
-pip install -e .
-
-# Verify installation
+```bash
 generate-mcp --help
 ```
 
-## Verify Installation
+The output starts with:
 
-You should see output similar to:
-
-```
-usage: generate-mcp [-h] [--file FILE] [--url URL] [--enable-storage]
-                    [--enable-caching] [--enable-resources]
-...
+```text
+usage: generate-mcp [-h] [--file FILE] [--url URL] [--enable-storage] [--enable-caching]
 ```
 
-## Next Steps
+The full option list is in the [CLI reference](../guide/cli.md).
 
-Head to the [Quick Start](quickstart.md) to generate your first MCP server.
+## Runtime dependencies of generated servers
+
+A generated server declares its own dependencies in `generated_mcp/pyproject.toml`
+(`fastmcp`, `openapi-py-fetch`, `pydantic` and the auth libraries). Install them in the
+environment that runs the server:
+
+```bash
+pip install -e ./generated_mcp
+```
+
+Next: [Quick start](quickstart.md).

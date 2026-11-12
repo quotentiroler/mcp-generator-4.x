@@ -5,103 +5,54 @@ hide:
 
 # MCP Generator 4.x
 
-**Transform any OpenAPI specification into a production-ready [FastMCP 4](https://github.com/PrefectHQ/fastmcp) server.**
-
 [![PyPI](https://img.shields.io/pypi/v/mcp-generator)](https://pypi.org/project/mcp-generator/)
 [![GitHub Release](https://img.shields.io/github/v/release/quotentiroler/mcp-generator-4.x?label=version)](https://github.com/quotentiroler/mcp-generator-4.x/releases)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.11+](https://img.shields.io/badge/python-v3.11-3776ab.svg)](https://www.python.org/downloads/)
-[![FastMCP 4](https://img.shields.io/badge/FastMCP-4-green.svg)](https://github.com/PrefectHQ/fastmcp)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](https://www.python.org/downloads/)
 
----
+MCP Generator reads an OpenAPI 3.0, OpenAPI 3.1 or Swagger 2.0 specification and writes a
+[FastMCP](https://github.com/PrefectHQ/fastmcp) server that exposes each API operation as an MCP
+tool. The output is plain Python that you can read, edit and deploy. Generated servers target
+FastMCP 4 by default; `--fastmcp-target 3` emits for the FastMCP 3 line.
 
-## What is MCP Generator?
+## What it generates
 
-MCP Generator automatically creates **modular, composable MCP servers** from OpenAPI 3.0.x, 3.1.x, and Swagger 2.0 specifications. It bridges REST APIs and AI agents by generating fully-functional MCP tools that AI assistants like Claude, ChatGPT, and others can use to interact with your APIs.
+- A typed Python client for the API, generated in pure Python (no Java or Node.js runtime)
+- One FastMCP sub-server per API tag, mounted into a main server under a namespace
+- Middleware for error handling, backend authentication, timing, logging, response size
+  limits and keepalive pings
+- JWT validation for the HTTP transport, plus OAuth2 configuration taken from the spec's
+  security schemes
+- A `fastmcp.json` file that switches runtime features on and off
+- A `pyproject.toml`, a Dockerfile and a `docker-compose.yml`
+- A pytest suite and a runner script for the generated server
 
-## Key Features
+Optional flags add MCP resources for GET endpoints, a storage backend, a response cache,
+interactive display tools (MCP Apps), OpenAPI Overlay processing and an A2A adapter. See
+[Optional features](guide/features.md).
 
-<div class="grid cards" markdown>
-
--   :material-view-module:{ .lg .middle } **Modular Architecture**
-
-    ---
-
-    One sub-server per API tag — composable, scalable, and organized.
-
--   :material-shield-lock:{ .lg .middle } **Enterprise Auth**
-
-    ---
-
-    JWT/JWKS validation, OAuth2 flows, MultiAuth composition, scope enforcement.
-
--   :material-layers:{ .lg .middle } **Middleware Stack**
-
-    ---
-
-    Error handling, timing, logging, response limiting, ping keepalive — full FastMCP 4 pipeline.
-
--   :material-magnify:{ .lg .middle } **SearchTools & CodeMode**
-
-    ---
-
-    FastMCP 4 transforms: BM25 tool discovery and experimental meta-tool execution.
-
--   :material-chart-timeline:{ .lg .middle } **OpenTelemetry**
-
-    ---
-
-    Built-in tracing with MCP semantic conventions — Console or OTLP export.
-
--   :material-test-tube:{ .lg .middle } **Auto-Generated Tests**
-
-    ---
-
-    Test suites generated alongside your server — ready to run out of the box.
-
--   :material-docker:{ .lg .middle } **Docker Ready**
-
-    ---
-
-    Dockerfile and docker-compose generated for instant containerized deployment.
-
--   :material-tag-multiple:{ .lg .middle } **Tool Tags & Timeouts**
-
-    ---
-
-    Automatic per-module tags, configurable timeouts, deprecated endpoint detection.
-
-</div>
-
-## Quick Example
+## Example
 
 ```bash
-# Install from PyPI
 pip install mcp-generator
-
-# Generate from any OpenAPI spec
 generate-mcp --url https://petstore3.swagger.io/api/v3/openapi.json
-
-# Run it
-cd generated_mcp
-python swagger_petstore_openapi_mcp_generated.py --transport http --port 8000
+python generated_mcp/swagger_petstore_openapi_mcp_generated.py --transport http --port 8000
 ```
 
-That's it — a fully functional MCP server with 19 tools, modular sub-servers, authentication middleware, and auto-generated tests.
+The Petstore spec produces 19 tools in three sub-servers (`Pet`, `Store`, `User`), served at
+`http://localhost:8000/mcp`.
 
-## Supported Specs
+## Supported input
 
-| Format | Status |
+| Format | Versions |
 |---|---|
-| OpenAPI 3.0.x | :white_check_mark: Fully supported |
-| OpenAPI 3.1.x | :white_check_mark: Fully supported |
-| Swagger 2.0 | :white_check_mark: Fully supported |
-| JSON | :white_check_mark: |
-| YAML | :white_check_mark: |
+| OpenAPI | 3.0.x, 3.1.x |
+| Swagger | 2.0 |
+| Encoding | JSON or YAML |
 
-## Next Steps
+## Next steps
 
-- [**Installation**](getting-started/installation.md) — set up the generator in 2 minutes
-- [**Quick Start**](getting-started/quickstart.md) — generate your first MCP server
-- [**Architecture**](guide/architecture.md) — understand the generated code structure
-- [**Comparison**](comparison.md) — see how we compare to alternatives
+- [Installation](getting-started/installation.md)
+- [Quick start](getting-started/quickstart.md)
+- [Architecture](guide/architecture.md)
+- [CLI reference](guide/cli.md)

@@ -1,140 +1,113 @@
-# Quick Start
+# Quick start
 
-Generate a fully-functional MCP server from an OpenAPI spec in under a minute.
-
-## 0. Install
-
-```bash
-pip install mcp-generator
-```
+This page takes an OpenAPI spec to a running MCP server connected to a client. It uses the
+public Swagger Petstore spec; replace it with your own.
 
 ## 1. Generate
 
-=== "Local file"
+Run the generator in an empty working directory:
 
-    ```bash
-    # Default: reads ./openapi.json
-    generate-mcp
-
-    # Or specify a file
-    generate-mcp --file ./my-api-spec.yaml
-    ```
-
-=== "From URL"
+=== "From a URL"
 
     ```bash
     generate-mcp --url https://petstore3.swagger.io/api/v3/openapi.json
     ```
 
-**What gets generated:**
+=== "From a file"
 
-- :white_check_mark: Python API client from the OpenAPI spec
-- :white_check_mark: Modular MCP server modules (one per API tag)
-- :white_check_mark: Authentication middleware
-- :white_check_mark: OAuth2 provider (if spec contains OAuth2 security schemes)
-- :white_check_mark: Package files, tests, and Docker configuration
-- :white_check_mark: Everything outputs to `generated_mcp/`
+    ```bash
+    # Reads ./openapi.json when --file is omitted
+    generate-mcp --file ./my-api.yaml
+    ```
 
-### Optional Features
+The generator writes everything relative to the current directory:
 
-By default, the generator creates a minimal, production-ready server. Enable additional features as needed:
+| Path | Contents |
+|---|---|
+| `generated_openapi/` | Python API client and the resolved spec (`openapi.json`) |
+| `generated_mcp/` | The MCP server package |
+| `test/generated/` | Generated pytest suite |
+| `test/run_tests.py` | Starts the server over HTTP and runs the suite |
 
-```bash
-# Enable persistent storage (for OAuth tokens, session state)
-generate-mcp --enable-storage
+`generated_mcp/` imports the client from `../generated_openapi`, so keep both directories side
+by side. [Architecture](../guide/architecture.md) describes the files inside `generated_mcp/`,
+and [Optional features](../guide/features.md) lists the flags that add more.
 
-# Enable response caching (reduces backend API calls)
-generate-mcp --enable-storage --enable-caching
-
-# Enable MCP resources (expose GET endpoints as MCP resources)
-generate-mcp --enable-resources
-
-# Enable all features
-generate-mcp --enable-storage --enable-caching --enable-resources
-```
-
-| Flag | Description | When to Use |
-|---|---|---|
-| `--enable-storage` | Persistent storage backend | OAuth refresh tokens, session data |
-| `--enable-caching` | Response caching with TTL | Rate-limited APIs, slow endpoints |
-| `--enable-resources` | MCP resource templates | Expose API data for context/retrieval |
-
-!!! note
-    `--enable-caching` requires `--enable-storage` as it uses the storage backend for cache persistence.
-
-## 2. Register
+## 2. Install the server's dependencies
 
 ```bash
-# Register the generated server
-register-mcp ./generated_mcp
-
-# Verify registration
-run-mcp --list
+pip install -e ./generated_mcp
 ```
-
-This adds your server to the local registry at `~/.mcp-generator/servers.json`.
 
 ## 3. Run
 
-=== "STDIO (local AI clients)"
+The main module is named after the API title: `<title>_mcp_generated.py`.
+
+=== "STDIO"
 
     ```bash
-    export API_TOKEN="your-api-token-here"
-    run-mcp swagger_petstore_openapi
+    export API_TOKEN="your-backend-token"   # PowerShell: $env:API_TOKEN = "..."
+    python generated_mcp/swagger_petstore_openapi_mcp_generated.py
     ```
 
-=== "HTTP (network)"
+=== "HTTP"
 
     ```bash
-    run-mcp swagger_petstore_openapi --mode http --port 8000
+    python generated_mcp/swagger_petstore_openapi_mcp_generated.py --transport http --port 8000
     ```
 
-=== "Direct Python"
+    The MCP endpoint is `http://localhost:8000/mcp` (Streamable HTTP).
 
-    ```bash
-    cd generated_mcp
-    python swagger_petstore_openapi_mcp_generated.py --transport stdio
-    ```
+Start the server through its own `main()` as shown, or through `run-mcp` (step 4). Loading
+`create_server` with the FastMCP CLI (`fastmcp run file.py:create_server`) registers the tools
+but skips the middleware that `main()` adds, so tool calls fail with "API client not
+available".
 
-=== "FastMCP CLI"
+In STDIO mode the server sends `API_TOKEN` to the backend API. In HTTP mode it forwards the
+`Authorization: Bearer` header of each MCP request. See
+[Authentication](../guide/authentication.md).
 
-    ```bash
-    cd generated_mcp
-    uv run fastmcp run swagger_petstore_openapi_mcp_generated.py:create_server
-    # Or with config:
-    uv run fastmcp run fastmcp.json
-    ```
+## 4. Register (optional)
 
-## 4. Connect to AI Clients
+`register-mcp` records the server in a local registry so that `run-mcp` can start it by name:
 
-### Claude Desktop
+```bash
+register-mcp ./generated_mcp
+run-mcp --list
+run-mcp swagger_petstore_openapi --mode http --port 8000
+```
 
-Add to `~/.claude/claude_desktop_config.json`:
+The registry name comes from the `[project.entry-points."mcp_servers"]` table in
+`generated_mcp/pyproject.toml`. See the [CLI reference](../guide/cli.md#register-mcp).
+
+## 5. Connect a client
+
+For a client that launches servers over STDIO, such as Claude Desktop, add an entry to its MCP
+configuration file:
 
 ```json
 {
   "mcpServers": {
-    "my-api": {
+    "petstore": {
       "command": "python",
-      "args": ["/path/to/generated_mcp/swagger_petstore_openapi_mcp_generated.py"],
+      "args": ["/absolute/path/to/generated_mcp/swagger_petstore_openapi_mcp_generated.py"],
       "env": {
-        "API_TOKEN": "your-api-token-here"
+        "API_TOKEN": "your-backend-token"
       }
     }
   }
 }
 ```
 
-### HTTP Mode
+Use the Python interpreter of the environment where you installed the server's dependencies.
+Clients that speak Streamable HTTP connect to `http://localhost:8000/mcp` instead.
 
-Any MCP-compatible client can connect to:
+## 6. Test
 
+From the directory where you ran `generate-mcp`:
+
+```bash
+python test/run_tests.py
 ```
-http://localhost:8000/mcp
-```
 
-## Next Steps
-
-- [Architecture](../guide/architecture.md) — understand the generated code structure
-- [CLI Reference](../guide/cli.md) — full command documentation
-- [Authentication](../guide/authentication.md) — JWT, OAuth2, and token validation
+See [Testing](../guide/testing.md) for the MCP Inspector and the generated test suite.
