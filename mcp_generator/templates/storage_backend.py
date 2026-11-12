@@ -57,14 +57,16 @@ Available py-key-value-aio backends:
 See: https://github.com/strawgate/py-key-value
 
 Configuration:
-    Set storage backend via environment variables:
-    - STORAGE_BACKEND: filesystem|memory
-    - STORAGE_PATH: Path for filesystem backend (default: ./.storage)
-    - ENCRYPTION_KEY: Fernet encryption key (auto-generated if not set)
+    Pass options to get_storage():
+    - backend: "filesystem" (default) or "memory"
+    - storage_dir: directory for the filesystem backend (default: .mcp_storage)
+    - encrypt: Fernet-encrypt stored values (default: True, needs cryptography)
+    - encryption_key: Fernet key; when omitted, one is created in storage_dir/.encryption_key
 """
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Optional
@@ -167,7 +169,7 @@ class FilesystemStorage(StorageBackend):
 
     def _get_file_path(self, key: str) -> Path:
         """Get file path for key (sanitize key name)."""
-        safe_key = key.replace("/", "_").replace("\\\\", "_")
+        safe_key = re.sub(r"[^A-Za-z0-9._-]", "_", key)
         return self.storage_dir / f"{safe_key}.dat"
 
     async def get(self, key: str) -> Optional[str]:

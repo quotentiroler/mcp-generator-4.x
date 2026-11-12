@@ -134,9 +134,10 @@ class CacheMiddleware:
         cache_key = self._generate_cache_key(tool_name, *args, **kwargs)
 
         try:
-            cached = await self.storage.get(cache_key)
-            if not cached:
+            raw = await self.storage.get(cache_key)
+            if not raw:
                 return None
+            cached = json.loads(raw)
 
             # Check expiration
             expires_at = datetime.fromisoformat(cached['expires_at'])
@@ -180,7 +181,7 @@ class CacheMiddleware:
         }
 
         try:
-            await self.storage.set(cache_key, cache_entry)
+            await self.storage.set(cache_key, json.dumps(cache_entry, default=str))
             logger.debug(f"Cached {tool_name} for {ttl}s")
             return True
         except Exception as e:

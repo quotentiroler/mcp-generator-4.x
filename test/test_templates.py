@@ -57,6 +57,32 @@ class TestAuthenticationTemplate:
     def test_contains_api_client_middleware(self, auth_code: str) -> None:
         assert "class ApiClientContextMiddleware" in auth_code
 
+    async def test_tool_errors_are_not_reported_as_auth_failures(self, auth_code: str) -> None:
+        """An exception raised by the tool must reach the caller unchanged."""
+        from types import SimpleNamespace
+
+        namespace: dict[str, object] = {
+            "__name__": "generated_authentication",
+            "__file__": "generated_mcp/middleware/authentication.py",
+        }
+        exec(compile(auth_code, "authentication.py", "exec"), namespace)
+        middleware_class = namespace["ApiClientContextMiddleware"]
+        assert isinstance(middleware_class, type)
+        middleware = middleware_class(transport_mode="stdio")
+
+        async def set_state(*_args: object, **_kwargs: object) -> None:
+            return None
+
+        context = SimpleNamespace(
+            method="tools/call", fastmcp_context=SimpleNamespace(set_state=set_state)
+        )
+
+        async def failing_tool(_context: object) -> None:
+            raise ValueError("backend rejected the request")
+
+        with pytest.raises(ValueError, match="backend rejected the request"):
+            await middleware.on_request(context, failing_tool)
+
 
 # ---------------------------------------------------------------------------
 # EventStore template
