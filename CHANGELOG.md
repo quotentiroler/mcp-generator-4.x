@@ -1,5 +1,28 @@
 # Changelog
 
+## [4.0.3b1] - 2026-11-12
+
+- ✨ Features
+  - None
+
+- 🐛 Bug Fixes
+  - fix(generator): read the spec a run actually uses, and fix runtime bugs found while verifying the docs
+
+- 📚 Documentation
+  - docs: rewrite README and docs against the current code
+  - docs: expose parser builders and render CLI help into the docs
+
+- 🔧 Chores & Improvements
+  - refactor(cli): expose parser builders and render CLI help into the docs
+  - chore: remove Copilot instruction file
+  - Update: changelog entry generation for PR #122 (automation)
+
+- ⚠️ Breaking Changes
+  - None
+
+**Full Changelog**: https://github.com/quotentiroler/mcp-generator-4.x/pull/125
+
+
 ## [4.0.2b1] - 2026-09-03
 
 - ⚠️ Breaking Changes
