@@ -51,6 +51,9 @@ plugins:
   - search
   - autorefs
 
+hooks:
+  - scripts/mkdocs_hooks.py
+
 markdown_extensions:
   - abbr
   - admonition
@@ -101,10 +104,10 @@ nav:
   - Guide:
       - Architecture: guide/architecture.md
       - CLI Reference: guide/cli.md
+      - Optional Features: guide/features.md
       - Authentication: guide/authentication.md
       - Middleware: guide/middleware.md
       - Configuration: guide/configuration.md
       - Testing: guide/testing.md
-  - Comparison: comparison.md
   - Contributing: contributing.md
   - Changelog: changelog.md

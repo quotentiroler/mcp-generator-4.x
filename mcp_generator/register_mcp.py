@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 
-def get_registry_path() -> Path:
+def get_registry_path(create_dirs: bool = True) -> Path:
     """
     Get the path to the local MCP servers registry.
 
@@ -21,27 +21,21 @@ def get_registry_path() -> Path:
     2. XDG_DATA_HOME/mcp-generator/servers.json
     3. ~/.mcp-generator/servers.json (default)
     """
-    # Check for explicit override
     if env_path := os.environ.get("MCP_REGISTRY_PATH"):
         registry_path = Path(env_path)
+    elif xdg_data := os.environ.get("XDG_DATA_HOME"):
+        registry_path = Path(xdg_data) / "mcp-generator" / "servers.json"
+    else:
+        registry_path = Path.home() / ".mcp-generator" / "servers.json"
+
+    if create_dirs:
         registry_path.parent.mkdir(parents=True, exist_ok=True)
-        return registry_path
-
-    # Check for XDG_DATA_HOME
-    if xdg_data := os.environ.get("XDG_DATA_HOME"):
-        registry_dir = Path(xdg_data) / "mcp-generator"
-        registry_dir.mkdir(parents=True, exist_ok=True)
-        return registry_dir / "servers.json"
-
-    # Default to ~/.mcp-generator
-    registry_dir = Path.home() / ".mcp-generator"
-    registry_dir.mkdir(exist_ok=True)
-    return registry_dir / "servers.json"
+    return registry_path
 
 
-def load_registry() -> dict:
+def load_registry(create_dirs: bool = True) -> dict:
     """Load the local MCP servers registry."""
-    registry_path = get_registry_path()
+    registry_path = get_registry_path(create_dirs=create_dirs)
     if not registry_path.exists():
         return {}
 
@@ -230,41 +224,48 @@ def export_server(server_name: str, output_file: str | None = None) -> None:
         print(json.dumps(server_json, indent=2))
 
 
-def main() -> None:
-    """Main entry point for register-mcp CLI."""
+REGISTER_COMMANDS = ("add", "remove", "list", "export")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the register-mcp argument parser."""
     parser = argparse.ArgumentParser(
+        prog="register-mcp",
         description="Register local MCP servers for use with run-mcp",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # Register command
     register_parser = subparsers.add_parser("add", help="Register a new MCP server")
     register_parser.add_argument("path", type=Path, help="Path to the MCP server directory")
 
-    # Unregister command
     unregister_parser = subparsers.add_parser("remove", help="Unregister an MCP server")
     unregister_parser.add_argument("name", help="Name of the server to unregister")
 
-    # List command
     list_parser = subparsers.add_parser("list", help="List all registered MCP servers")
     list_parser.add_argument(
         "--json", action="store_true", help="Output registry as JSON (for scripting/automation)"
     )
 
-    # Export command
     export_parser = subparsers.add_parser(
         "export", help="Export server metadata as server.json for MCP Registry publishing"
     )
     export_parser.add_argument("name", help="Name of the server to export")
     export_parser.add_argument("-o", "--output", help="Output file path (default: print to stdout)")
 
+    return parser
+
+
+def main() -> None:
+    """Main entry point for register-mcp CLI."""
+    parser = build_parser()
+
     # Default to add if path is provided directly
     if (
         len(sys.argv) > 1
         and not sys.argv[1].startswith("-")
-        and sys.argv[1] not in ["add", "remove", "list", "export"]
+        and sys.argv[1] not in REGISTER_COMMANDS
     ):
         sys.argv.insert(1, "add")
 

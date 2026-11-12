@@ -2,14 +2,15 @@
 
 import argparse
 
-from ..config import DEFAULT_FASTMCP_TARGET, PROJECT_REPO_URL
+from ..config import DEFAULT_FASTMCP_TARGET, DEFAULT_SCHEMA_DEPTH, PROJECT_DOCS_URL
 from ..fastmcp_target import SUPPORTED_TARGETS
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the generate-mcp argument parser."""
     parser = argparse.ArgumentParser(
-        description="MCP Generator 4.x - OpenAPI to FastMCP 4 Server Generator",
+        prog="generate-mcp",
+        description="Generate a FastMCP server from an OpenAPI or Swagger specification.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
@@ -36,17 +37,7 @@ Examples:
   # Generate A2A agent adapter
   generate-mcp --enable-a2a
 
-Optional Features (disabled by default for simplicity):
-  --enable-storage    Persistent storage for OAuth tokens & state
-  --enable-caching    Response caching (reduces API calls)
-  --enable-resources  MCP resources from GET endpoints
-  --enable-apps       MCP Apps with interactive UI display tools
-  --generate-ui       API-specific display tools from response schemas (requires --enable-apps)
-  --overlay FILE      Apply OpenAPI Overlay 1.0.0 to enrich descriptions
-  --auto-overlay      Auto-generate rule-based overlay for AI-friendly descriptions
-  --enable-a2a        Generate A2A agent adapter + AgentCard
-
-Documentation: {PROJECT_REPO_URL}
+Documentation: {PROJECT_DOCS_URL}
         """,
     )
 
@@ -75,7 +66,7 @@ Documentation: {PROJECT_REPO_URL}
         "--enable-caching",
         action="store_true",
         default=False,
-        help="Enable response caching middleware (reduces backend API calls, requires --enable-storage)",
+        help="Generate cache.py, a TTL cache decorator for tool functions (requires --enable-storage)",
     )
 
     parser.add_argument(
@@ -102,8 +93,11 @@ Documentation: {PROJECT_REPO_URL}
     parser.add_argument(
         "--schema-depth",
         type=int,
-        default=3,
-        help="Max nesting depth for response schema parsing (default: 3, increase for deeply nested APIs)",
+        default=DEFAULT_SCHEMA_DEPTH,
+        help=(
+            "Max nesting depth for response schema parsing used by --generate-ui "
+            f"(default: {DEFAULT_SCHEMA_DEPTH}, increase for deeply nested APIs)"
+        ),
     )
 
     parser.add_argument(
@@ -134,9 +128,8 @@ Documentation: {PROJECT_REPO_URL}
         default=DEFAULT_FASTMCP_TARGET,
         help=(
             "FastMCP major version the generated server targets "
-            f"(default: {DEFAULT_FASTMCP_TARGET}). 4 is a prerelease target: it drops "
-            "server-side sampling and replaces elicitation with a guard response, "
-            "which the sessionless 2026-07-28 protocol requires"
+            f"(default: {DEFAULT_FASTMCP_TARGET}). Target 4 drops server-side sampling "
+            "and reports missing parameters back to the caller instead of eliciting them"
         ),
     )
 
