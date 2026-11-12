@@ -206,7 +206,7 @@ from middleware.authentication import ApiClientContextMiddleware
         "--validate-tokens",
         action="store_true",
         default=default_validate_tokens,
-        help=f"Enable JWT token validation for HTTP transport (default: {{default_validate_tokens}}, configurable in fastmcp.json)"
+        help=f"Enable JWT token validation for HTTP transport (default: {default_validate_tokens}, configurable in fastmcp.json)"
     )
 """
         auth_validation = """

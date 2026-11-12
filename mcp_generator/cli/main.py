@@ -160,16 +160,24 @@ def main() -> None:
     print("\n🔨 Generating Python API client from OpenAPI specification...")
 
     try:
-        import json as _json
-
-        with open(openapi_spec, encoding="utf-8") as _f:
-            openapi_spec_dict = _json.load(_f)
-
         from openapi_py_fetch.generator import generate_client_package
 
-        from ..introspection import enrich_spec_tags
+        from ..introspection import (
+            _load_openapi_spec,
+            enrich_spec_tags,
+            resolve_relative_servers,
+            write_resolved_spec,
+        )
+
+        loaded_spec = _load_openapi_spec(openapi_spec)
+        if loaded_spec is None:
+            raise ValueError(f"{openapi_spec.name} is neither valid JSON nor valid YAML")
+        openapi_spec_dict = loaded_spec
+        if args.url:
+            resolve_relative_servers(openapi_spec_dict, args.url)
 
         generated_dir.mkdir(parents=True, exist_ok=True)
+        write_resolved_spec(src_dir, openapi_spec_dict)
         ok = generate_client_package(
             openapi_spec_dict, generated_dir, enrich_tags_fn=enrich_spec_tags
         )
@@ -510,9 +518,9 @@ def main() -> None:
 
         # Show enabled optional features
         if args.enable_storage:
-            print("   • Enabled: Persistent storage backend (storage.py, cache_middleware.py)")
-        if args.enable_caching:
-            print("   • Enabled: Response caching with configurable TTL")
+            print("   • Enabled: Persistent storage backend (storage.py)")
+        if args.enable_caching and args.enable_storage:
+            print("   • Enabled: Response caching decorator (cache.py)")
         if args.enable_resources and total_resources > 0:
             print("   • Enabled: MCP resources for data access")
         if args.enable_apps:

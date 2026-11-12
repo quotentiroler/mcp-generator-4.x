@@ -296,11 +296,11 @@ class ApiClientContextMiddleware(Middleware):
             else:
                 logger.warning("FastMCP context missing; unable to attach ApiClient")
 
-            return await call_next(context)
-
         except McpError:
             raise
         except Exception as exc:
             logger.error("Authentication pipeline error: %s", exc)
             raise {auth_failed_error}
+
+        return await call_next(context)
 '''
