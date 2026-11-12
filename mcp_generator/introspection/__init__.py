@@ -14,7 +14,12 @@ from .schema import (
     _ref_cache,
     _resolve_ref,
 )
-from .spec import _load_openapi_spec, enrich_spec_tags
+from .spec import (
+    _load_openapi_spec,
+    enrich_spec_tags,
+    resolve_relative_servers,
+    write_resolved_spec,
+)
 
 __all__ = [
     "_extract_response_schema",
@@ -32,4 +37,6 @@ __all__ = [
     "get_form_endpoints",
     "get_resource_endpoints",
     "get_security_config",
+    "resolve_relative_servers",
+    "write_resolved_spec",
 ]

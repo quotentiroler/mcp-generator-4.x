@@ -1,151 +1,78 @@
-# CLI Reference
+# CLI reference
 
-MCP Generator installs three CLI commands.
+The package installs three commands. The help text on this page is rendered from the
+commands' argument parsers each time the documentation is built.
 
 ## generate-mcp
 
-Generate a FastMCP 3.x server from an OpenAPI spec.
+Generates a server from a spec. All output goes to the current working directory; see
+[Architecture](architecture.md#generated-layout) for the layout.
 
-```bash
-generate-mcp [OPTIONS]
-```
+<!-- cli-help: generate-mcp -->
 
-### Options
+Notes:
 
-| Option | Default | Description |
-|---|---|---|
-| `--file <path>` | `./openapi.json` | Path to OpenAPI spec file (JSON or YAML) |
-| `--url <url>` | — | Download spec from URL (overrides `--file`) |
-| `--enable-storage` | off | Enable persistent storage backend |
-| `--enable-caching` | off | Enable response caching (requires `--enable-storage`) |
-| `--enable-resources` | off | Expose GET endpoints as MCP resources |
-| `--fastmcp-target <3\|4>` | `4` | FastMCP major version the generated server targets |
+- `--url` saves the download as `openapi.json`, or `openapi.yaml` when the URL ends in
+  `.yaml` or `.yml`, in the current directory.
+- `--enable-caching` has no effect without `--enable-storage`, and `--generate-ui` has no
+  effect without `--enable-apps`. The generator prints a warning and skips them.
+- `--overlay fhir` applies the overlay bundled in `mcp_generator/overlays/fhir.overlay.yaml`.
+- After a run, the generator prints the optional flags that were not used, with a command to
+  regenerate with them.
 
-### FastMCP target version
-
-Generated servers target **FastMCP 4** by default, which is built on the MCP Python
-SDK v2 and serves the sessionless `2026-07-28` protocol alongside handshake-era
-clients. Pass `--fastmcp-target 3` to emit for the FastMCP 3 line instead, which
-upstream maintains for MCP SDK v1 users.
-
-Three things differ in the emitted server:
-
-| Concern | Target 4 (default) | Target 3 |
-|---|---|---|
-| Missing required parameters | Tool returns what it needs — elicitation cannot reach a client that negotiates the modern protocol | `ctx.elicit()` asks the client |
-| API error recovery | Error is raised on its own — server-side sampling is removed in 4.x | `ctx.sample()` asks the caller's model for a hint |
-| HTTP client | `httpx2` — FastMCP 4 replaced httpx across its whole stack | `httpx` |
-
-Target 4 also floors pydantic at `>=2.12`, which is the MCP SDK v2 requirement:
-below it, installation fails resolution outright rather than upgrading.
-
-### Examples
-
-```bash
-# Local file (default)
-generate-mcp
-
-# Custom file
-generate-mcp --file ./my-api.yaml
-
-# From URL
-generate-mcp --url https://petstore3.swagger.io/api/v3/openapi.json
-
-# Target the FastMCP 3 line instead of the default 4
-generate-mcp --file ./openapi.json --fastmcp-target 3
-
-# All features enabled
-generate-mcp --url https://example.com/api.json \
-  --enable-storage --enable-caching --enable-resources
-```
-
----
+The flags are described in [Optional features](features.md).
 
 ## register-mcp
 
-Manage the local server registry at `~/.mcp-generator/servers.json`.
+Keeps a local registry of generated servers for `run-mcp`. A path given without a subcommand
+is treated as `add`, so `register-mcp ./generated_mcp` and `register-mcp add ./generated_mcp`
+are equivalent.
 
-```bash
-register-mcp <COMMAND> [OPTIONS]
-```
+<!-- cli-help: register-mcp -->
 
-### Commands
+`add` reads the server name and entry point from the
+`[project.entry-points."mcp_servers"]` table of the server's `pyproject.toml`. `export` writes
+a `server.json` draft for a registered server. Its publisher, source URL, homepage and license
+fields are `TODO` placeholders to fill in before publishing to an MCP registry.
 
-| Command | Description |
-|---|---|
-| `add <path>` | Register a generated server (default when a path is given) |
-| `list` | Show all registered servers |
-| `remove <name>` | Unregister a server by name |
-| `export <name>` | Export server metadata as `server.json` |
+### Registry location
 
-### Options
+The first match wins:
 
-| Option | Command | Description |
-|---|---|---|
-| `--json` | `list` | Output as JSON for scripting |
-| `-o, --output <file>` | `export` | Write to file (default: stdout) |
-
-### Examples
-
-```bash
-# Register (explicit)
-register-mcp add ./generated_mcp
-
-# Register (shorthand)
-register-mcp ./generated_mcp
-
-# List registered servers
-register-mcp list
-
-# List as JSON
-register-mcp list --json
-
-# Remove
-register-mcp remove swagger_petstore_openapi
-
-# Export metadata
-register-mcp export swagger_petstore_openapi -o server.json
-```
-
----
+1. `MCP_REGISTRY_PATH`, a full path to the registry file
+2. `$XDG_DATA_HOME/mcp-generator/servers.json`
+3. `~/.mcp-generator/servers.json`
 
 ## run-mcp
 
-Run a registered server by name.
+Starts a registered server by name.
+
+<!-- cli-help: run-mcp -->
+
+`run-mcp` imports the server's entry point and calls it with `--transport`. In HTTP mode it
+also passes `--host`, `--port` and, when set, `--validate-tokens`. Only servers generated from
+a spec with security schemes accept `--validate-tokens`.
+
+## Generated server
+
+The main module of a generated server has its own command line:
 
 ```bash
-run-mcp <SERVER_NAME> [OPTIONS]
+python generated_mcp/<title>_mcp_generated.py [--transport {stdio,http}] [--host HOST] [--port PORT] [--validate-tokens]
 ```
-
-### Options
 
 | Option | Default | Description |
 |---|---|---|
-| `--list` | — | List registered servers and exit |
-| `--mode` / `--transport` | `stdio` | Transport mode: `stdio` or `http` |
-| `--host` | `0.0.0.0` | HTTP host |
-| `--port` | `8000` | HTTP port |
-| `--validate-tokens` | off | Enable JWT validation (HTTP mode) |
+| `--transport` | `stdio` | `stdio` or `http` (Streamable HTTP at `/mcp`) |
+| `--host` | `0.0.0.0` | Bind address for HTTP |
+| `--port` | `8000` | Port for HTTP |
+| `--validate-tokens` | `middleware.config.authentication.validate_tokens` in `fastmcp.json` | Validate JWTs on HTTP requests. Present only when the spec declares security schemes. |
 
-### Examples
+## Helper scripts
 
-```bash
-# List servers
-run-mcp --list
+These modules ship with the package and run with `python -m`:
 
-# Run via STDIO
-export API_TOKEN="your-token"
-run-mcp swagger_petstore_openapi
-
-# Run via HTTP
-run-mcp swagger_petstore_openapi --mode http --port 8000
-
-# HTTP with JWT validation
-run-mcp swagger_petstore_openapi --mode http --port 8000 --validate-tokens
-```
-
-### Notes
-
-- The registry lives at `~/.mcp-generator/servers.json`
-- `run-mcp` forwards flags to the generated server's entry point
-- You can also run the generated script directly: `python <name>_mcp_generated.py`
+| Command | Purpose |
+|---|---|
+| `python -m mcp_generator.scripts.validate_openapi [--spec PATH] [--strict]` | Checks a JSON spec for problems that affect generation |
+| `python -m mcp_generator.scripts.generate_jwt_keypair` | Writes an RSA key pair and a JWKS file to a `keys/` directory inside the installed `mcp_generator` package, for local JWT testing |

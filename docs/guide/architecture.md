@@ -1,159 +1,119 @@
 # Architecture
 
-MCP Generator produces a **modular, composable** server architecture — not a monolithic single file.
+## Generation pipeline
 
-## Generated Structure
+`generate-mcp` runs these steps in the current working directory:
 
-```mermaid
-graph TD
-    A[Main Composition Server] --> B[Pet Sub-Server]
-    A --> C[Store Sub-Server]
-    A --> D[User Sub-Server]
-    A --> E[Middleware Stack]
-    E --> F[Error Handling]
-    E --> G[Authentication]
-    E --> H[Timing]
-    E --> I[Logging]
-```
+1. Load the spec from `--file` or download it from `--url`. JSON and YAML are both accepted.
+2. Apply `--overlay` and `--auto-overlay`, if given, to a copy of the spec and write it as
+   `<name>_enhanced.<ext>` next to the original.
+3. Write the resolved spec to `generated_openapi/openapi.json` and generate a typed Python
+   client from it with [openapi-py-fetch](https://pypi.org/project/openapi-py-fetch/). Every
+   later step reads this resolved spec.
+4. Introspect the client's API classes and the spec: operations, parameters, request bodies,
+   security schemes and GET endpoints.
+5. Render one server module per API class, the middleware, the main server and the package
+   files into `generated_mcp/`.
+6. Render the test suite into `test/generated/` and the runner into `test/run_tests.py`.
 
-For a Petstore API, the generator produces:
+## Generated layout
 
-```
+```text
+generated_openapi/
+├── openapi.json                 resolved spec used for generation
+└── openapi_client/              typed API client
 generated_mcp/
-├── swagger_petstore_openapi_mcp_generated.py   # Main entry point
-├── servers/
-│   ├── pet.py              # Pet tag → sub-server (8 tools)
-│   ├── store.py            # Store tag → sub-server (4 tools)
-│   └── user.py             # User tag → sub-server (7 tools)
+├── <title>_mcp_generated.py     main server and CLI entry point
+├── servers/<tag>_server.py      one FastMCP sub-server per API tag
 ├── middleware/
-│   └── authentication.py   # JWT/OAuth2 middleware
-├── fastmcp.json            # FastMCP configuration
-├── pyproject.toml           # Package metadata
-├── Dockerfile               # Multi-stage Docker build
-├── docker-compose.yml
-└── README.md                # Auto-generated documentation
+│   ├── authentication.py        ApiClientContextMiddleware, JWT backend
+│   ├── oauth_provider.py        verifier and auth provider factories
+│   └── event_store.py
+├── fastmcp.json                 runtime feature switches
+├── pyproject.toml
+├── README.md
+├── Dockerfile, docker-compose.yml, .dockerignore
+├── storage.py                   with --enable-storage
+├── cache.py                     with --enable-storage --enable-caching
+├── apps/                        with --enable-apps
+└── agent_card.json, a2a_adapter.py   with --enable-a2a
 ```
 
-## Key Design Decisions
+`<title>` is the spec's `info.title` converted to a Python identifier, for example
+`swagger_petstore_openapi` for "Swagger Petstore - OpenAPI 3.0".
 
-### One Sub-Server per Tag
+## Sub-servers and composition
 
-Each OpenAPI tag becomes a separate FastMCP server module under `servers/`. These are composed into the main server using `mount()`:
+The client generator creates one API class per OpenAPI tag. Operations without a tag go to a
+`default` class. Tags that operations use but the top-level `tags` list does not declare are
+added before generation, so they still get their own class.
+
+Each API class becomes a module under `servers/` with its own `FastMCP` instance. An operation
+listed under several tags is generated once, in the first module that reaches it. The main
+server mounts every module under a namespace named after the API class:
 
 ```python
-# Main composition server
-app = FastMCP("Swagger Petstore")
-app.mount(pet_mcp, namespace="pet")
-app.mount(store_mcp, namespace="store")
-app.mount(user_mcp, namespace="user")
+app.mount(Pet_mcp, namespace="Pet")
+app.mount(Store_mcp, namespace="Store")
+app.mount(User_mcp, namespace="User")
 ```
 
-This keeps each module focused and independently maintainable.
+FastMCP prefixes tool names with the namespace, so clients see `Pet_add_pet`,
+`Store_place_order` and so on.
 
-### Tool Tags and Timeouts
+Mounting happens in `_compose_mcp_servers()`, which `main()` calls after adding the
+middleware. `create_server()` mounts the sub-servers without adding middleware: use it with
+`fastmcp inspect` to list components, and start the server through `main()` to call tools.
 
-Generated tools automatically include FastMCP 4 features:
+## Tools
+
+Each operation becomes an async tool that builds the client call from its arguments:
 
 ```python
 @mcp.tool(tags=["pet"], timeout=30)
-async def list_pets(ctx: Context, limit: str | None = None) -> dict[str, Any]:
-    """List all pets in the store."""
+async def get_pet_by_id(ctx: Context, pet_id: str) -> dict[str, Any]:
     ...
 ```
 
-- **Tags** — derived from the API tag (e.g., `pet_api` → `["pet"]`)
-- **Timeouts** — configurable per-tool (default 30s)
-- **Deprecated detection** — endpoints marked deprecated in OpenAPI get `version="deprecated"`
+- `tags` holds the module's tag.
+- `timeout` is 30 seconds for every tool.
+- An operation whose summary or description mentions "deprecated" also gets
+  `version="deprecated"`.
+- On the FastMCP 3 target, a tool asks the client for missing required parameters with
+  `ctx.elicit()` and uses `ctx.sample()` to suggest a fix after an API error. On the FastMCP 4
+  target, the tool returns the list of missing parameters and raises API errors unchanged,
+  since the sessionless `2026-07-28` protocol has no server-to-client requests.
 
-### Tag Auto-Discovery
+## Resources
 
-If your OpenAPI spec has endpoints without explicit tags, the generator **automatically infers tags** from the URL path structure. For example, `/api/v1/users/{id}` gets tagged as `users`.
+With `--enable-resources`, GET operations that have an `operationId` also become MCP resource
+templates. Path and query parameters map to an RFC 6570 URI template, for example
+`pet://Pet/pet/{petId}`.
 
-### FastMCP 4 Native
+## Transports
 
-The generated code targets FastMCP 4 directly:
-
-- `mount()` with `namespace=` (not the deprecated `import_server()`)
-- `http_app()` for Streamable HTTP transport
-- Built-in `EventStore` for SSE resumability
-- Native middleware pipeline
-- Transforms pipeline (SearchTools, CodeMode)
-
-### Transforms
-
-The generated server supports FastMCP 4 transforms — pipeline components that modify tool presentation:
-
-#### SearchTools
-
-BM25 text search over tool names and descriptions. Useful for servers with many tools:
-
-```json
-{
-  "features": {
-    "search_tools": {
-      "enabled": true
-    }
-  }
-}
-```
-
-When enabled, LLMs can search for relevant tools by name/description before listing the full catalog.
-
-#### CodeMode (Experimental)
-
-Replaces the full tool catalog with three meta-tools:
-
-1. **search** — find relevant tools by keyword
-2. **inspect** — get detailed tool schema
-3. **execute** — run a tool by name
-
-```json
-{
-  "features": {
-    "code_mode": {
-      "enabled": true
-    }
-  }
-}
-```
-
-CodeMode is experimental and useful for very large tool catalogs where full enumeration is impractical.
-
-### Transport Modes
-
-The generated server supports multiple transports:
-
-| Transport | Command | Use Case |
+| Flag | Transport | Endpoint |
 |---|---|---|
-| **STDIO** | `--transport stdio` | Local AI clients (Claude Desktop) |
-| **HTTP** | `--transport http --port 8000` | Network access, Streamable HTTP |
+| `--transport stdio` (default) | STDIO | |
+| `--transport http` | Streamable HTTP with an event store for resumable streams | `http://<host>:<port>/mcp` |
 
-In HTTP mode, the server uses FastMCP's Streamable HTTP implementation with an event store for SSE resumability.
+`--host` defaults to `0.0.0.0` and `--port` to `8000`. Servers whose spec declares security
+schemes also accept `--validate-tokens`; see [Authentication](authentication.md).
 
-### Middleware Pipeline
+## Target FastMCP version
 
-Every generated server includes a configurable middleware stack:
+`--fastmcp-target` selects the FastMCP major the server is written for. The differences are
+kept in `mcp_generator/fastmcp_target.py`.
 
-```
-Request → Error Handling → Authentication → Timing → Logging → Tool Execution
-```
+| | Target 4 (default) | Target 3 |
+|---|---|---|
+| `fastmcp` requirement | `>=4.0.2,<5.0.0` | `>=3.2.4,<4.0.0` |
+| `pydantic` requirement | `>=2.12,<3.0.0` | `>=2.10.3,<3.0.0` |
+| Missing required parameters | Returned to the caller | `ctx.elicit()` |
+| API error recovery | Error raised as is | `ctx.sample()` hint |
+| HTTP client for token introspection | `httpx2` | `httpx` |
 
-- **Error Handling** — catches exceptions, returns structured errors
-- **Authentication** — JWT validation or backend token forwarding
-- **Timing** — tracks execution duration per tool call
-- **Logging** — structured request/response logging
+## Middleware and runtime features
 
-Optional middleware (enabled via flags):
-
-- **Caching** — response caching with configurable TTL
-- **Storage** — persistent backend for tokens, sessions, cache
-
-### MCP Resources
-
-When `--enable-resources` is used, GET endpoints are also exposed as **MCP resources** — allowing AI clients to read API data as context without calling tools.
-
-## OpenAPI Client
-
-The generator includes a **pure Python OpenAPI client generator** that creates a typed API client from the spec. This client is used internally by the generated MCP tools to make HTTP requests to the backend API.
-
-No Java or Node.js runtime is required.
+The middleware stack and the switches in `fastmcp.json` are described in
+[Middleware](middleware.md) and [Configuration](configuration.md).

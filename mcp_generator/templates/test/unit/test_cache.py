@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generated_mcp"))
 
 try:
-    from storage import get_storage
+    from storage import FilesystemStorage, get_storage
     from cache import get_cache_middleware
 except ImportError:
     print("⚠️  Skipped: Cache and storage modules not generated")
@@ -224,7 +224,7 @@ async def test_cache_with_filesystem_storage():
     print("\\n🧪 Testing Cache with Filesystem Storage...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        storage = get_storage("filesystem", base_dir=tmpdir)
+        storage = FilesystemStorage(storage_dir=tmpdir)
         cache = get_cache_middleware(storage, default_ttl=300)
 
         tool_name = "fs_test"

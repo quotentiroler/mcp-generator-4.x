@@ -1,145 +1,57 @@
 # Middleware
 
-Every generated server includes a configurable middleware stack built on FastMCP 4's native middleware pipeline.
+`main()` in the generated server adds FastMCP middleware in this order:
 
-## Default Middleware Stack
+| Order | Middleware | Added when |
+|---|---|---|
+| 1 | `ErrorHandlingMiddleware(include_traceback=True)` | Always |
+| 2 | `ApiClientContextMiddleware` | Always |
+| 3 | `DetailedTimingMiddleware` | Always |
+| 4 | `LoggingMiddleware(include_payloads=False)` | Always |
+| 5 | `ResponseLimitingMiddleware(max_size=...)` | `features.response_limiting.enabled` (default `true`) |
+| 6 | `PingMiddleware` | `features.ping_middleware.enabled` (default `true`) |
+| 7 | `RateLimitingMiddleware(...)` | `features.rate_limiting.enabled` (default `false`) |
 
-The following middleware is always included:
+The `features.*` keys live in `generated_mcp/fastmcp.json`; see
+[Configuration](configuration.md).
 
-```
-Request → Error Handling → Authentication → Timing → Logging → Response Limiting → Ping → Tool Execution
-```
+## What each one does
 
-```python
-from fastmcp.server.middleware.timing import DetailedTimingMiddleware
-from fastmcp.server.middleware.logging import LoggingMiddleware
-from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
-from fastmcp.server.middleware.rate_limiting import ResponseLimitingMiddleware
-from fastmcp.server.middleware.ping import PingMiddleware
-from middleware.authentication import ApiClientContextMiddleware
+- **Error handling** converts exceptions raised by tools into MCP errors that include the
+  traceback.
+- **ApiClientContextMiddleware** builds the backend API client for `tools/call` and
+  `resources/read` and stores it in the request context. It passes every other MCP method
+  through unchanged. See [Authentication](authentication.md#backend-credentials).
+- **Timing** records the duration of each request.
+- **Logging** logs requests and responses without payloads.
+- **Response limiting** truncates tool responses larger than
+  `features.response_limiting.max_size_bytes` (default 1,048,576 bytes) at a UTF-8 boundary.
+- **Ping** sends keepalive pings on long-lived HTTP connections.
+- **Rate limiting** applies a token bucket with `max_requests_per_second` (default 10),
+  `burst_capacity` (default 20) and `global_limit` (default `false`, which limits per
+  client).
 
-# Middleware stack (order matters!)
-app.add_middleware(ErrorHandlingMiddleware(include_traceback=True))
-app.add_middleware(ApiClientContextMiddleware(...))
-app.add_middleware(DetailedTimingMiddleware())
-app.add_middleware(LoggingMiddleware(include_payloads=False))
-app.add_middleware(ResponseLimitingMiddleware(max_size=1_048_576))  # 1MB
-app.add_middleware(PingMiddleware())
-```
+JWT validation runs earlier, as ASGI middleware on the HTTP app, when the server starts with
+`--validate-tokens`.
 
-### Error Handling
+## OpenTelemetry
 
-Catches all exceptions during tool execution and returns structured error responses. Prevents unhandled exceptions from crashing the server.
+With `features.opentelemetry.enabled`, the server installs an OpenTelemetry tracer provider
+named after `features.opentelemetry.service_name`. Spans go to the console unless
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set, in which case they go to that OTLP gRPC endpoint.
 
-### Authentication
-
-The `ApiClientContextMiddleware` handles:
-
-- **STDIO mode** — forwards `API_TOKEN` to the backend API
-- **HTTP mode** — optionally validates JWT tokens via JWKS
-- **Identity injection** — makes authenticated user context available to tools
-- **Dynamic visibility** — per-session component toggling based on scopes (opt-in)
-
-### Timing
-
-`DetailedTimingMiddleware` tracks execution duration for every tool call. Useful for identifying slow operations and setting up monitoring.
-
-### Logging
-
-`LoggingMiddleware` provides structured request/response logging for observability.
-
-### Response Limiting
-
-`ResponseLimitingMiddleware` provides UTF-8-safe truncation of oversized tool responses:
-
-- Default limit: **1MB** (configurable in `fastmcp.json`)
-- Prevents memory issues from unexpectedly large API responses
-- Truncates cleanly at UTF-8 character boundaries
-
-Configure in `fastmcp.json`:
-
-```json
-{
-  "features": {
-    "response_limiting": {
-      "enabled": true,
-      "max_size_bytes": 1048576
-    }
-  }
-}
-```
-
-### Ping Middleware
-
-`PingMiddleware` provides HTTP keepalive for long-lived connections:
-
-- Prevents connection timeouts during long-running operations
-- Essential for Streamable HTTP transport
-- Automatically enabled by default
-
-## Optional Middleware
-
-### Response Caching
-
-Enable with `--enable-storage --enable-caching`:
+The OpenTelemetry packages are an optional dependency group of the generated package:
 
 ```bash
-generate-mcp --enable-storage --enable-caching
-```
-
-Caches API responses with configurable TTL. Reduces backend API calls for rate-limited or expensive endpoints.
-
-### Storage Backend
-
-Enable with `--enable-storage`:
-
-```bash
-generate-mcp --enable-storage
-```
-
-A persistent storage backend for:
-
-- OAuth refresh tokens
-- Session state
-- User preferences
-- Cache persistence
-
-## OpenTelemetry Tracing
-
-Generated servers include optional OpenTelemetry support for distributed tracing:
-
-```json
-{
-  "features": {
-    "opentelemetry": {
-      "enabled": true,
-      "service_name": "petstore-mcp"
-    }
-  }
-}
-```
-
-### Exporter Configuration
-
-- **Console (default)** — spans logged to stdout
-- **OTLP** — set `OTEL_EXPORTER_OTLP_ENDPOINT` for remote export
-
-```bash
-# Export to Jaeger/Tempo/etc.
+pip install -e "./generated_mcp[telemetry]"
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-python server_mcp_generated.py --transport http
+python generated_mcp/<title>_mcp_generated.py --transport http
 ```
 
-### Installation
+If the packages are missing, the server logs a warning and starts without tracing.
 
-OpenTelemetry is an optional dependency:
+## Adding middleware
 
-```bash
-pip install ".[telemetry]"
-# or
-uv sync --extra telemetry
-```
-
-## Customizing Middleware
-
-The generated middleware files are meant to be customized. Edit `middleware/authentication.py` directly to add custom logic, additional validation, or domain-specific middleware.
+The generated files are regular Python. Add middleware in `main()` of the main module, or
+extend `ApiClientContextMiddleware` in `middleware/authentication.py`. Regenerating overwrites
+both files, so keep a patch or a wrapper module if you regenerate often.

@@ -16,6 +16,8 @@ from mcp_generator.introspection import (
     get_display_endpoints,
     get_form_endpoints,
     get_security_config,
+    resolve_relative_servers,
+    write_resolved_spec,
 )
 from mcp_generator.models import ResponseField
 from test.conftest import (
@@ -190,6 +192,22 @@ class TestGetSecurityConfig:
         config = get_security_config(tmp_path)
         assert config.schemes == {}
         assert config.oauth_config is None
+
+    def test_reads_resolved_spec_when_no_default_named_file(self, tmp_path: Path) -> None:
+        """A spec passed as --file my-api.yaml is introspected, not silently skipped."""
+        write_resolved_spec(tmp_path, copy.deepcopy(OPENAPI_SPEC_WITH_SECURITY))
+        config = get_security_config(tmp_path)
+        assert config.oauth_config is not None
+        assert config.default_scopes == ["read"]
+
+    def test_resolved_spec_wins_over_default_named_file(
+        self, write_spec: Callable[..., Path]
+    ) -> None:
+        """Overlays and --file must not be shadowed by a stray openapi.json in the cwd."""
+        base_dir = write_spec(MINIMAL_OPENAPI_SPEC)
+        write_resolved_spec(base_dir, copy.deepcopy(OPENAPI_SPEC_WITH_SECURITY))
+        config = get_security_config(base_dir)
+        assert set(config.schemes) == {"bearerAuth", "oauth2", "apiKey"}
 
 
 # ---------------------------------------------------------------------------
@@ -907,3 +925,31 @@ class TestSpecPassthrough:
         ep = result["items"][0]
         q_param = next(p for p in ep.query_params if p["name"] == "q")
         assert q_param["description"] == "Search query"
+
+
+# ---------------------------------------------------------------------------
+# resolve_relative_servers
+# ---------------------------------------------------------------------------
+
+
+class TestResolveRelativeServers:
+    def test_relative_server_url_resolves_against_spec_url(self) -> None:
+        spec = {"openapi": "3.0.4", "servers": [{"url": "/api/v3"}]}
+        resolve_relative_servers(spec, "https://petstore3.swagger.io/api/v3/openapi.json")
+        assert spec["servers"] == [{"url": "https://petstore3.swagger.io/api/v3"}]
+
+    def test_absolute_server_url_is_kept(self) -> None:
+        spec = {"openapi": "3.1.0", "servers": [{"url": "https://api.example.com/v1"}]}
+        resolve_relative_servers(spec, "https://docs.example.com/openapi.json")
+        assert spec["servers"] == [{"url": "https://api.example.com/v1"}]
+
+    def test_missing_servers_default_to_spec_origin(self) -> None:
+        spec: dict[str, object] = {"openapi": "3.0.0", "paths": {}}
+        resolve_relative_servers(spec, "https://api.example.com/docs/openapi.json")
+        assert spec["servers"] == [{"url": "https://api.example.com/"}]
+
+    def test_swagger_without_host_takes_host_from_spec_url(self) -> None:
+        spec: dict[str, object] = {"swagger": "2.0", "basePath": "/v2"}
+        resolve_relative_servers(spec, "http://petstore.example.com/v2/swagger.json")
+        assert spec["host"] == "petstore.example.com"
+        assert spec["schemes"] == ["http"]

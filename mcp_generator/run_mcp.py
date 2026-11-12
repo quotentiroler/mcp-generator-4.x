@@ -7,55 +7,16 @@ Use 'register-mcp' to add servers to the registry.
 """
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
-from typing import Any
+
+from .register_mcp import get_registry_path, load_registry
 
 
-def get_registry_path() -> Path:
-    """
-    Get the path to the local MCP servers registry.
-
-    Priority order:
-    1. MCP_REGISTRY_PATH environment variable
-    2. XDG_DATA_HOME/mcp-generator/servers.json
-    3. ~/.mcp-generator/servers.json (default)
-    """
-    # Check for explicit override
-    if env_path := os.environ.get("MCP_REGISTRY_PATH"):
-        return Path(env_path)
-
-    # Check for XDG_DATA_HOME
-    if xdg_data := os.environ.get("XDG_DATA_HOME"):
-        return Path(xdg_data) / "mcp-generator" / "servers.json"
-
-    # Default to ~/.mcp-generator
-    return Path.home() / ".mcp-generator" / "servers.json"
-
-
-def load_local_registry() -> dict:
-    """Load the local MCP servers registry."""
-    registry_path = get_registry_path()
-    if not registry_path.exists():
-        return {}
-
-    try:
-        with open(registry_path, encoding="utf-8") as f:
-            return dict(json.load(f))
-    except Exception:
-        return {}
-
-
-def list_servers() -> dict[str, Any]:
-    """List all registered MCP servers from local registry."""
-    return load_local_registry()
-
-
-def main() -> int:
-    """Main entry point for run-mcp CLI."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the run-mcp argument parser."""
     parser = argparse.ArgumentParser(
+        prog="run-mcp",
         description="Run a registered MCP server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -84,17 +45,21 @@ def main() -> int:
         action="store_true",
         help="Enable JWT token validation for HTTP transport",
     )
+    return parser
 
+
+def main() -> int:
+    """Main entry point for run-mcp CLI."""
+    parser = build_parser()
     args = parser.parse_args()
 
-    # Get registered servers
-    servers = list_servers()
+    servers = load_registry(create_dirs=False)
 
     # Handle --list flag
     if args.list:
         if not servers:
             print("No MCP servers registered.")
-            print(f"\nRegistry location: {get_registry_path()}")
+            print(f"\nRegistry location: {get_registry_path(create_dirs=False)}")
             print("\nTo register a server:")
             print("  register-mcp /path/to/server")
             return 0
@@ -108,7 +73,7 @@ def main() -> int:
             if info.get("description"):
                 print(f"    Description: {info['description']}")
         print(f"\n{'=' * 70}")
-        print(f"Registry location: {get_registry_path()}")
+        print(f"Registry location: {get_registry_path(create_dirs=False)}")
         print("\nUsage: run-mcp <server_name> [options]")
         return 0
 
